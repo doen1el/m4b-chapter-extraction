@@ -1,7 +1,13 @@
-# m4a-extract-chapters 
+## M4B Audiobook Chapter Extractor
 
-Given a m4a audiobook file it will extract it chapters  
+If you have an audiobook in m4b format and you want to extract it's chapters, this script is for you.
 
-## Usage  
+## Usage
 
-``` python3 chapter-extractor.py -f "filename" ``` 
+```
+python3 chapter-extractor.py -f [filename]
+```
+
+## Special thanks to the following projects:
+
+- [FFmpeg](https://github.com/FFmpeg/FFmpeg)

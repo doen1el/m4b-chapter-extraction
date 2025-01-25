@@ -1,82 +1,111 @@
-# Import necessary modules
-import os  # For interacting with the operating system
-import re  # For regular expression matching
-import subprocess as sp  # For running external commands
-from subprocess import *  # Import subprocess module
-from optparse import OptionParser  # For parsing command line options
+import os  
+import re  
+import subprocess as sp  
+from subprocess import * 
+import argparse
 
-# Function to parse chapters from a video file using FFmpeg
-def parseChapters(filename):
-  chapters = []  # Initialize list to store chapters
-  command = [ "ffmpeg", '-i', filename]  # FFmpeg command to get information about chapters
-  output = ""  # Initialize output variable
-  try:
-    # Run FFmpeg command and capture its output
-    output = sp.check_output(command, stderr=sp.STDOUT, universal_newlines=True)
-  except CalledProcessError as e:
-    output = e.output  # Capture output if an error occurs
+class ChapterExtractor:
+  def __init__(self, infile):
+    self.infile = infile
+    self.chapters = []
+    
+  def checkInputFile(self):
+    """
+    Checks if the input file has a valid extension.
+    Raises:
+      ValueError: If the input file does not have an '.m4b' extension.
+    """
+    if not self.infile.lower().endswith('.m4b'):
+      raise ValueError("Input file must be an m4b file")
 
-  # Iterate through each line of the FFmpeg output
-  for line in iter(output.splitlines()):
-    # Use regular expression to match chapter information in each line
-    m = re.match(r".*Chapter #(\d+:\d+): start (\d+\.\d+), end (\d+\.\d+).*", line)
-    num = 0  # Initialize counter
-    if m != None:
-      # If chapter information is found, extract and store it
-      chapters.append({ "name": m.group(1), "start": m.group(2), "end": m.group(3)})
-      num += 1  # Increment counter
-  return chapters  # Return list of chapters
-
-# Function to get chapters from user input
-def getChapters():
-  # Initialize option parser
-  parser = OptionParser(usage="usage: %prog [options] filename", version="%prog 1.0")
-  # Add option for input file
-  parser.add_option("-f", "--file",dest="infile", help="Input File", metavar="FILE")
-  # Parse command line options
-  (options, args) = parser.parse_args()
-  # Check if input file is provided
-  if not options.infile:
-    parser.error('Filename required')  # Display error message if input file is missing
-  # Parse chapters from input file
-  chapters = parseChapters(options.infile)
-  fbase, fext = os.path.splitext(options.infile)
-  # Iterate through chapters
-  for chap in chapters:
-    # Print start time of each chapter
-    print("start:" +  chap['start'])
-    # Generate output file name for each chapter
-    chap['outfile'] = chap['name'].split(':')[1] + " " + fbase + fext
-    chap['origfile'] = options.infile  # Store original file name
-    print(chap['outfile'])  # Print generated output file name
-  return chapters  # Return list of chapters
-
-# Function to convert chapters into separate video files
-def convertChapters(chapters):
-  for chap in chapters:
-    # Print start time of each chapter
-    print("start:" +  chap['start'])
-    print(chap)  # Print chapter information
-    # FFmpeg command to extract chapter into a separate file
-    command = [
-        "ffmpeg", '-i', chap['origfile'],
-        '-vcodec', 'copy',
-        '-acodec', 'copy',
-        '-ss', chap['start'],
-        '-to', chap['end'],
-        chap['outfile']]
-    output = ""  # Initialize output variable
+  def parseChapters(self):
+    """
+    Parses chapters from the input media file using ffmpeg.
+    This method runs an ffmpeg command to extract chapter information from the input file.
+    It then processes the output to find chapter details and appends them to the `chapters` attribute.
+    Raises:
+      CalledProcessError: If the ffmpeg command fails.
+    Appends:
+      dict: A dictionary containing chapter information with keys:
+        - "name": The chapter identifier (e.g., "0:0").
+        - "start": The start time of the chapter (e.g., "0.000000").
+        - "end": The end time of the chapter (e.g., "10.000000").
+    """
+    command = ["ffmpeg", '-i', self.infile]
+    output = ""
     try:
-      # Run FFmpeg command and capture its output
-      output = sp.check_output(command, stderr=sp.STDOUT, universal_newlines=True)
+        output = sp.check_output(command, stderr=sp.STDOUT, universal_newlines=True)
     except CalledProcessError as e:
-      output = e.output  # Capture output if an error occurs
-      # Raise runtime error with detailed error message
-      raise RuntimeError("command '{}' return with error (code {}): {}".format(e.cmd, e.returncode, e.output))
+        output = e.output
 
-# Main function
+    for line in iter(output.splitlines()):
+        m = re.match(r".*Chapter #(\d+:\d+): start (\d+\.\d+), end (\d+\.\d+).*", line)
+        if m:
+            self.chapters.append({"name": m.group(1), "start": m.group(2), "end": m.group(3)})
+    print(f"Parsed chapters: {self.chapters}")
+
+  def getChapters(self):
+    """
+    Extracts chapter information and prepares output filenames.
+    This method processes the chapters associated with the input file,
+    generating output filenames based on the chapter names and the input
+    file's base name and extension. It also stores the original input file
+    name in each chapter's dictionary.
+    Returns:
+      list: A list of dictionaries, each containing chapter information
+          including 'outfile' (the generated output filename) and
+          'origfile' (the original input file name).
+    """
+    fbase, fext = os.path.splitext(self.infile)
+    output_dir = "output"
+    os.makedirs(output_dir, exist_ok=True)
+    for chap in self.chapters:
+        chap['outfile'] = os.path.join(output_dir, chap['name'].split(':')[1] + " " + fbase + fext)
+        chap['origfile'] = self.infile
+    print(f"Chapters with output filenames: {self.chapters}")
+    return self.chapters
+
+  def convertChapters(self):
+    """
+    Converts chapters of an audio or video file using ffmpeg.
+    This method iterates over the chapters stored in the `self.chapters` attribute,
+    and for each chapter, it constructs and executes an ffmpeg command to extract
+    the chapter from the original file and save it to the specified output file.
+    Raises:
+      RuntimeError: If the ffmpeg command returns an error.
+    Example:
+      self.chapters = [
+        {
+          'origfile': 'input.mp4',
+          'start': '00:00:00',
+          'end': '00:05:00',
+          'outfile': 'chapter1.mp4'
+        },
+        ...
+      ]
+      self.convertChapters()
+    """
+    for chap in self.chapters:
+        command = [
+            "ffmpeg", '-i', chap['origfile'],
+            '-vcodec', 'copy',
+            '-acodec', 'copy',
+            '-ss', chap['start'],
+            '-to', chap['end'],
+            chap['outfile']]
+        try:
+            sp.check_output(command, stderr=sp.STDOUT, universal_newlines=True)
+            print(f"Converted chapter {chap['name']} to {chap['outfile']}")
+        except CalledProcessError as e:
+            raise RuntimeError("command '{}' return with error (code {}): {}".format(e.cmd, e.returncode, e.output))
+
 if __name__ == '__main__':
-  # Get chapters from input file
-  chapters = getChapters()
-  # Convert chapters into separate video files
-  convertChapters(chapters)
+  parser = argparse.ArgumentParser(description="Extract chapters from a m4b file")
+  parser.add_argument("-f", "--file", dest="infile", required=True, help="m4v file to extract chapters from")
+  args = parser.parse_args()
+  
+  extractor = ChapterExtractor(args.infile)
+  extractor.checkInputFile()
+  extractor.parseChapters()
+  extractor.getChapters()
+  extractor.convertChapters()
